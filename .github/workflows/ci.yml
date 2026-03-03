@@ -1,0 +1,54 @@
+name: CI Pipeline
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: electromart_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-test-secret
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: electromart_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      STRIPE_SECRET_KEY: sk_test_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_placeholder
+      FRONTEND_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: docker build -t electromart .
+      - name: Run smoke test
+        run: |
+          docker run -d -p 8000:8000 \
+            -e NODE_ENV=production \
+            -e JWT_SECRET=smoketest \
+            -e STRIPE_SECRET_KEY=sk_test_placeholder \
+            -e STRIPE_WEBHOOK_SECRET=whsec_placeholder \
+            --name test-container electromart
+          sleep 5
+          curl http://localhost:8000 || exit 1
+          docker stop test-container
